@@ -968,6 +968,3 @@ async function processImage(originalImgElement, div) {
   backgroundImg.parent(div);
   backgroundImg.addClass('background');
 }
-
-// generateLowResImageAsync, generateMaskAsync, applyMaskToImageAsync,
-// setImageTransform, and getImageTransformFromElement now live in imgproc.js

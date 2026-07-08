@@ -676,17 +676,17 @@ async function processAnyAttachedMedia() {
   revealMediaForCopying();
 }
 
-// #media is only ever a hidden data source while the sketch runs (see
-// style.css), but by this point every image's alignment now lives on it as
-// a data-transform attribute. Move it after the canvas and make it visible
-// so the finished markup can be selected/copied straight out of the page,
-// outside of (i.e. not overlapping) the sketch itself.
+// #media stays hidden (see style.css) — by this point every image's
+// alignment now lives on it as a data-transform attribute, so its
+// outerHTML text (not the hidden elements themselves) is copied into
+// #media-html, a plain text line outside the sketch, for copying out of
+// the page.
 function revealMediaForCopying() {
   const mediaElement = select('#media')?.elt;
-  if (!mediaElement) return;
+  const outputElement = select('#media-html')?.elt;
+  if (!outputElement) return;
 
-  document.body.appendChild(mediaElement);
-  mediaElement.style.visibility = 'visible';
+  outputElement.textContent = mediaElement ? mediaElement.outerHTML : 'Error: #media not found';
 }
 
 // Orders images by their recovered capture sequence and records each one's

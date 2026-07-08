@@ -672,6 +672,21 @@ async function processAnyAttachedMedia() {
 
   buildPlaybackSchedule();
   buildCameraKeyframes();
+
+  revealMediaForCopying();
+}
+
+// #media is only ever a hidden data source while the sketch runs (see
+// style.css), but by this point every image's alignment now lives on it as
+// a data-transform attribute. Move it after the canvas and make it visible
+// so the finished markup can be selected/copied straight out of the page,
+// outside of (i.e. not overlapping) the sketch itself.
+function revealMediaForCopying() {
+  const mediaElement = select('#media')?.elt;
+  if (!mediaElement) return;
+
+  document.body.appendChild(mediaElement);
+  mediaElement.style.visibility = 'visible';
 }
 
 // Orders images by their recovered capture sequence and records each one's

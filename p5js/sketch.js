@@ -88,6 +88,7 @@ async function createForegroundSegmenter() {
 async function setup() {
   // Use WEBGL so texture()/vertex(u,v) in drawImageWithHomography works
   canvas = createCanvas(2000, 800, WEBGL);
+  canvas.parent('canvas-target'); // explicit target, rather than p5's default append-to-body
   frameRate(10);
   canvas.drop(onFileDropped);
 
@@ -103,6 +104,20 @@ async function setup() {
   textureMode(NORMAL);
 
   processAnyAttachedMedia();
+}
+
+// Mirrors warnings onto the page itself (#on-screen-console), not just the
+// browser devtools console — this sketch is often run/projected without
+// devtools open, so alignment failures would otherwise go unseen.
+function logWarning(...args) {
+  console.warn(...args);
+
+  const consoleElement = select('#on-screen-console')?.elt;
+  if (!consoleElement) return;
+
+  const line = document.createElement('div');
+  line.textContent = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+  consoleElement.appendChild(line);
 }
 
 function onFileDropped(file) {
@@ -502,7 +517,7 @@ function exportAllMediaElements(selector) {
   const mediaElement = select('#media')?.elt;
   const exportElement = select('#export')?.elt;
   if (!mediaElement || !exportElement || !mediaBoundingBox) {
-    console.warn('Missing #media, #export, or mediaBoundingBox');
+    logWarning('Missing #media, #export, or mediaBoundingBox');
     return;
   }
 
@@ -628,14 +643,14 @@ function processHomography(id) {
         break;
       }
     } else if (!result.valid) {
-      console.warn('Rejecting homography with', image_a.parentElement.id, ':', result.reason);
+      logWarning('Rejecting homography with', image_a.parentElement.id, ':', result.reason);
     }
   }
 
   if (bestT0B) {
     setImageTransform(image_b.parentElement, bestT0B);
   } else {
-    console.warn('No valid homography found for', image_b.parentElement.id);
+    logWarning('No valid homography found for', image_b.parentElement.id);
   }
 }
 
@@ -676,17 +691,27 @@ async function processAnyAttachedMedia() {
   revealMediaForCopying();
 }
 
-// #media stays hidden (see style.css) — by this point every image's
-// alignment now lives on it as a data-transform attribute, so its
-// outerHTML text (not the hidden elements themselves) is copied into
-// #media-html, a plain text line outside the sketch, for copying out of
-// the page.
+// #media stays hidden (see style.css) — by this point each wrapping div's
+// data-transform attribute holds the real alignment matrix (the .original
+// img's own data-transform is always just the identity, see
+// processAnyAttachedMedia's Phase 1 and processHomography). The
+// .lowres/.mask/.foreground/.background img elements processImage() also
+// leaves on each div are pipeline intermediates carrying base64 image data
+// - stripped here so #media-html holds only the small, meaningful markup:
+// each div plus its .original img, for copying out of the page.
 function revealMediaForCopying() {
   const mediaElement = select('#media')?.elt;
   const outputElement = select('#media-html')?.elt;
   if (!outputElement) return;
 
-  outputElement.textContent = mediaElement ? mediaElement.outerHTML : 'Error: #media not found';
+  if (!mediaElement) {
+    outputElement.textContent = 'Error: #media not found';
+    return;
+  }
+
+  const clone = mediaElement.cloneNode(true);
+  clone.querySelectorAll('img:not(.original)').forEach(img => img.remove());
+  outputElement.textContent = clone.outerHTML;
 }
 
 // Orders images by their recovered capture sequence and records each one's

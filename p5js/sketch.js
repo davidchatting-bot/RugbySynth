@@ -655,6 +655,18 @@ function processHomography(id) {
 }
 
 async function processAnyAttachedMedia() {
+  // If #media itself carries a data-key (the compressed, base64-encoded
+  // output revealMediaForCopying() produces), decode it and use it to
+  // populate #media's children before anything else runs - this lets a
+  // page ship just that one compact attribute instead of the full,
+  // already-aligned div/img markup, and processImage()'s own
+  // already-aligned check then skips re-running segmentation on it.
+  const mediaElement = select('#media')?.elt;
+  const key = mediaElement?.getAttribute('data-key');
+  if (key) {
+    mediaElement.innerHTML = await decompressFromBase64(key);
+  }
+
   const originals = selectAll('#media .original');
   // Wait for all images to load
   await Promise.all(originals.map(i => {
@@ -688,7 +700,7 @@ async function processAnyAttachedMedia() {
   buildPlaybackSchedule();
   buildCameraKeyframes();
 
-  revealMediaForCopying();
+  await revealMediaForCopying();
 }
 
 // #media stays hidden (see style.css) — by this point each wrapping div's
@@ -697,9 +709,10 @@ async function processAnyAttachedMedia() {
 // processAnyAttachedMedia's Phase 1 and processHomography). The
 // .lowres/.mask/.foreground/.background img elements processImage() also
 // leaves on each div are pipeline intermediates carrying base64 image data
-// - stripped here so #media-html holds only the small, meaningful markup:
-// each div plus its .original img, for copying out of the page.
-function revealMediaForCopying() {
+// - stripped here, then the remaining markup (each div plus its .original
+// img) is gzip-compressed and base64-encoded into #media-html, for copying
+// out of the page as a compact string.
+async function revealMediaForCopying() {
   const mediaElement = select('#media')?.elt;
   const outputElement = select('#media-html')?.elt;
   if (!outputElement) return;
@@ -711,7 +724,68 @@ function revealMediaForCopying() {
 
   const clone = mediaElement.cloneNode(true);
   clone.querySelectorAll('img:not(.original)').forEach(img => img.remove());
-  outputElement.textContent = clone.outerHTML;
+  outputElement.textContent = await compressToBase64(clone.innerHTML);
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary);
+}
+
+function base64ToBytes(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// gzip-compresses text via the browser's built-in CompressionStream, then
+// base64-encodes the compressed bytes into a single copyable string.
+async function compressToBase64(text) {
+  const cs = new CompressionStream('gzip');
+  const writer = cs.writable.getWriter();
+  writer.write(new TextEncoder().encode(text));
+  writer.close();
+
+  const chunks = [];
+  const reader = cs.readable.getReader();
+  for (let result = await reader.read(); !result.done; result = await reader.read()) {
+    chunks.push(result.value);
+  }
+
+  const compressedBytes = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    compressedBytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return bytesToBase64(compressedBytes);
+}
+
+// Inverse of compressToBase64(): base64-decodes then gunzips via
+// DecompressionStream, back to the original text.
+async function decompressFromBase64(base64) {
+  const ds = new DecompressionStream('gzip');
+  const writer = ds.writable.getWriter();
+  writer.write(base64ToBytes(base64));
+  writer.close();
+
+  const chunks = [];
+  const reader = ds.readable.getReader();
+  for (let result = await reader.read(); !result.done; result = await reader.read()) {
+    chunks.push(result.value);
+  }
+
+  const decompressedBytes = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    decompressedBytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return new TextDecoder().decode(decompressedBytes);
 }
 
 // Orders images by their recovered capture sequence and records each one's
@@ -996,6 +1070,13 @@ function getImageTimestampFromElement(element) {
 }
 
 async function processImage(originalImgElement, div) {
+  // Already aligned (e.g. baked into the page's static HTML by a previous
+  // run) — skip the segmentation/masking pipeline, since processHomography()
+  // would just throw its output away via its own already-aligned check.
+  // Trade-off: without a .background element, a pre-aligned frame like this
+  // can no longer be used as a match candidate for any newly-dropped photo.
+  if (getImageTransformFromElement(div)) return;
+
   // 1. Generate low-res image and wait for it to load
   const lowResImg = await generateLowResImageAsync(originalImgElement);
   lowResImg.parent(div);

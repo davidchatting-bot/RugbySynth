@@ -88,6 +88,7 @@ async function createForegroundSegmenter() {
 async function setup() {
   // Use WEBGL so texture()/vertex(u,v) in drawImageWithHomography works
   canvas = createCanvas(2000, 800, WEBGL);
+  canvas.parent('canvas-target'); // explicit target, rather than p5's default append-to-body
   frameRate(10);
   canvas.drop(onFileDropped);
 

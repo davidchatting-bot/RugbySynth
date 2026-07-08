@@ -21,7 +21,7 @@ canvas {
 }
 
 #media {
-  visibility: hidden;
+  display: none;
 }
 
 #export.img {

@@ -712,7 +712,7 @@ async function revealMediaForCopying() {
 
   const clone = mediaElement.cloneNode(true);
   clone.querySelectorAll('img:not(.original)').forEach(img => img.remove());
-  outputElement.textContent = await compressToBase64(clone.outerHTML);
+  outputElement.textContent = await compressToBase64(clone.innerHTML);
 }
 
 function bytesToBase64(bytes) {

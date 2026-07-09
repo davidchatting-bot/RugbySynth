@@ -702,7 +702,13 @@ async function processAnyAttachedMedia() {
   // alignment work — the processing order below (and buildPlaybackSchedule
   // afterwards) is derived from these.
   for (const orig of originals) {
-    setImageTransform(orig.elt, identityMatrix);
+    // Only default to identity if nothing's set yet - a hydrated data-key
+    // can give an .original its own real scale-compensation transform (see
+    // getBoundingBox()'s comment above), which this would otherwise
+    // clobber back to identity every load.
+    if (!getImageTransformFromElement(orig.elt)) {
+      setImageTransform(orig.elt, identityMatrix);
+    }
     const timestamp = await extractImageTimestamp(orig.elt);
     setImageTimestamp(orig.elt, timestamp);
   }

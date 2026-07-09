@@ -75,12 +75,6 @@ const FADE_MS = 150;
 // then travels to be exactly framed on the next image by its due time.
 let cameraKeyframes = [];
 
-// The straight line from the first keyframe's eye position to the last
-// (see fitLineToPoints() in buildCameraKeyframes()) - eye travels along
-// this one line during forward playback too now, the same line rewind's
-// own eye already travels.
-let cameraPathLine = null;
-
 /**
  * Creates the foreground segmenter and waits until it's ready.
  * Returns a Promise that resolves when the segmenter is ready.
@@ -1040,29 +1034,9 @@ function computeCameraKeyframeForImage(image, transform) {
 // transforms buildPlaybackSchedule just validated), framing that image alone.
 // Each keyframe's time matches that image's playbackSchedule offset exactly,
 // so the camera is precisely, squarely framed on an image the moment it's due.
-// Straight line through just the first and last of a set of 3D points -
-// origin is the first point, dir the normalized direction to the last one.
-// Same line rewind's own eye: lerp3(last.eye, first.eye, t) already travels,
-// just made reusable so forward can travel it too.
-function fitLineToPoints(points) {
-  const first = points[0];
-  const last = points[points.length - 1];
-  const d = [last[0] - first[0], last[1] - first[1], last[2] - first[2]];
-  const len = Math.hypot(d[0], d[1], d[2]) || 1;
-
-  return { origin: first, dir: [d[0] / len, d[1] / len, d[2] / len] };
-}
-
-// Scalar distance (in dir's units, i.e. already normalized) of point's
-// projection onto the line from origin along dir - reconstruct the actual
-// point via origin + dir*s.
-function projectOntoLine(point, origin, dir) {
-  return (point[0] - origin[0]) * dir[0] + (point[1] - origin[1]) * dir[1] + (point[2] - origin[2]) * dir[2];
-}
-
 function buildCameraKeyframes() {
   const mediaElement = select('#media')?.elt;
-  if (!mediaElement || playbackSchedule.length === 0) { cameraKeyframes = []; cameraPathLine = null; return; }
+  if (!mediaElement || playbackSchedule.length === 0) { cameraKeyframes = []; return; }
 
   cameraKeyframes = playbackSchedule.map(entry => {
     const image = mediaElement.children[entry.index].querySelector('.original');
@@ -1070,11 +1044,6 @@ function buildCameraKeyframes() {
     const pose = computeCameraKeyframeForImage(image, transform);
     return { time: entry.offsetMs, ...pose };
   });
-
-  cameraPathLine = fitLineToPoints(cameraKeyframes.map(kf => kf.eye));
-  for (const kf of cameraKeyframes) {
-    kf.eyeLineParam = projectOntoLine(kf.eye, cameraPathLine.origin, cameraPathLine.dir);
-  }
 }
 
 function lerp3(a, b, t) {
@@ -1109,17 +1078,14 @@ function catmullRom3(p0, p1, p2, p3, t) {
 }
 
 // Returns the interpolated {eye, center, up} camera pose for the current
-// moment. eye always travels along cameraPathLine, the straight line from
-// the first keyframe to the last - forward and rewind both stay on that
-// one line, just timed differently. center/up (look direction, not
-// position) still curve via Catmull-Rom through the surrounding keyframes
-// during forward travel, or lerp3 directly during rewind. Forward: exactly
-// kfA from kfA.time through kfA's own hold/fade window (the camera stays
-// parked there for the full "burst" rather than immediately setting off
-// for kfB), then travels the remaining gap, arriving exactly at kfB by
-// kfB.time. Rewind: straight from the last keyframe back to the first,
-// over REWIND_DURATION_MS. Uses the same elapsed clock that gates each
-// image's own moment window in draw().
+// moment. Forward: exactly kfA from kfA.time through kfA's own hold/fade
+// window (the camera stays parked there for the full "burst" rather than
+// immediately setting off for kfB), then travels the remaining gap along a
+// Catmull-Rom curve through the surrounding keyframes, arriving exactly at
+// kfB by kfB.time. Rewind: a direct straight line from the last keyframe
+// back to the first, over REWIND_DURATION_MS - no need to retrace every
+// intermediate keyframe on the way back. Uses the same elapsed clock that
+// gates each image's own moment window in draw().
 function getCameraPose() {
   if (cameraKeyframes.length === 0) return null;
   if (cameraKeyframes.length === 1) return cameraKeyframes[0];
@@ -1151,29 +1117,20 @@ function getCameraPose() {
   const span = kfB.time - departTime;
   const t = elapsed <= departTime ? 0 : (span > 0 ? constrain((elapsed - departTime) / span, 0, 1) : 1);
 
-  // The stop/travel timing above is unchanged. eye now travels the same
-  // straight line rewind's eye already does (cameraPathLine, first keyframe
-  // to last), rather than curving through every intermediate keyframe -
-  // just linear interpolation of each keyframe's scalar position along that
-  // line. center/up (look direction, not position) still curve via
-  // Catmull-Rom through the surrounding keyframes.
+  // The stop/travel timing above is unchanged - only the spatial path
+  // sampled at a given t is now a Catmull-Rom curve through kfA->kfB
+  // (using the keyframes either side as tangent control points, clamped -
+  // duplicated - at the very start/end) instead of a straight line, so
+  // travel curves smoothly through the whole sequence rather than kinking
+  // at every waypoint.
   const kfPrev = cameraKeyframes[Math.max(i - 1, 0)];
   const kfNext = cameraKeyframes[Math.min(i + 2, cameraKeyframes.length - 1)];
 
   return {
-    eye: eyeOnPathLine(lerp1(kfA.eyeLineParam, kfB.eyeLineParam, t)),
+    eye: catmullRom3(kfPrev.eye, kfA.eye, kfB.eye, kfNext.eye, t),
     center: catmullRom3(kfPrev.center, kfA.center, kfB.center, kfNext.center, t),
     up: catmullRom3(kfPrev.up, kfA.up, kfB.up, kfNext.up, t)
   };
-}
-
-function lerp1(a, b, t) {
-  return a + (b - a) * t;
-}
-
-function eyeOnPathLine(s) {
-  const { origin, dir } = cameraPathLine;
-  return [origin[0] + dir[0] * s, origin[1] + dir[1] * s, origin[2] + dir[2] * s];
 }
 
 // Reads DateTimeOriginal + SubSecTimeOriginal via exif-js and combines them

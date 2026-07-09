@@ -84,10 +84,15 @@ async function createForegroundSegmenter() {
   await maskSegmentation.initialize();
 }
 
+// Canvas width once resized to a single photo's own aspect ratio - see
+// processAnyAttachedMedia(), which resizes as soon as image dimensions are
+// known. Used here only as setup()'s placeholder size before that happens.
+const CANVAS_WIDTH = 800;
+
 // In setup(), use async/await to block until ready
 async function setup() {
   // Use WEBGL so texture()/vertex(u,v) in drawImageWithHomography works
-  canvas = createCanvas(2000, 800, WEBGL);
+  canvas = createCanvas(CANVAS_WIDTH, CANVAS_WIDTH, WEBGL);
   canvas.parent('canvas-target'); // explicit target, rather than p5's default append-to-body
   frameRate(10);
   canvas.drop(onFileDropped);
@@ -678,6 +683,19 @@ async function processAnyAttachedMedia() {
       }
     });
   }));
+
+  // Now that a photo's natural dimensions are known, size the canvas to
+  // that single photo's own aspect ratio at CANVAS_WIDTH, rather than
+  // setup()'s square placeholder. Any one photo stands in for all of them -
+  // they're a burst sequence from one camera, so all share the same ratio.
+  if (originals.length > 0) {
+    const sample = originals[0].elt;
+    const w = sample.naturalWidth || sample.width;
+    const h = sample.naturalHeight || sample.height;
+    if (w && h) {
+      resizeCanvas(CANVAS_WIDTH, Math.round(CANVAS_WIDTH * (h / w)));
+    }
+  }
 
   // Phase 1: recover every image's EXIF timestamp up front, before any
   // alignment work — the processing order below (and buildPlaybackSchedule

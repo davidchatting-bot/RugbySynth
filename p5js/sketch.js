@@ -22,7 +22,7 @@ let maskSegmentation = null;
 // Real-time playback of the capture sequence, driven by each image's EXIF timestamp.
 const PLAYBACK_START_PAUSE_MS = 3000;
 const PLAYBACK_END_PAUSE_MS = 3000;
-const PLAYBACK_SPEED = 0.1; // 1 = real-time (matches original capture pace), 0.1 = a tenth speed
+const PLAYBACK_SPEED = 0.3; // 1 = real-time (matches original capture pace), 0.3 = three-tenths speed
 let playbackSchedule = [];
 let playbackStartMillis = 0;
 
@@ -399,11 +399,11 @@ function draw() {
   // Exactly one image is shown at a time. It holds at full opacity on the
   // first image throughout the start pause, and on the last image
   // throughout the end pause, rather than the screen going blank there.
-  // During forward playback AND rewind, each image follows its own
-  // hold/fade window in turn (holdAlphaAt) as elapsed passes through it -
-  // rewind just runs that same elapsed clock backwards, over
-  // REWIND_DURATION_MS. The most recently active image keeps showing at
-  // LOW_ALPHA between windows.
+  // During forward playback, each image follows its own hold/fade window in
+  // turn (holdAlphaAt); the most recently active one keeps showing at
+  // LOW_ALPHA until the next image's window begins. Rewind instead just
+  // shows whichever image is nearest the current (backwards-running)
+  // elapsed time - see the 'rewind' branch below for why.
   let highlightIndex = -1;
   let highlightAlpha = LOW_ALPHA;
 
@@ -413,7 +413,7 @@ function draw() {
   } else if (phase === 'end-pause') {
     highlightIndex = playbackSchedule[playbackSchedule.length - 1].index;
     highlightAlpha = 1;
-  } else if (phase === 'forward' || phase === 'rewind') {
+  } else if (phase === 'forward') {
     let bestPos = 0;
     let bestAlpha = -Infinity;
     for (let p = 0; p < playbackSchedule.length; p++) {
@@ -424,6 +424,21 @@ function draw() {
       highlightIndex = playbackSchedule[bestPos].index;
       highlightAlpha = bestAlpha;
     }
+  } else if (phase === 'rewind') {
+    // holdAlphaAt's hold/fade window is derived from real time (HOLD_MS *
+    // PLAYBACK_SPEED), but the fixed REWIND_DURATION_MS rewind sweeps
+    // through the whole capture-time range far faster - most images'
+    // windows end up only a few ms wide and never land on an actual 10fps
+    // frame. Show whichever image's own offset is nearest instead, so every
+    // image gets its own real-time slice of the rewind, however brief.
+    let bestPos = 0;
+    let bestDist = Infinity;
+    for (let p = 0; p < playbackSchedule.length; p++) {
+      const d = Math.abs(playbackSchedule[p].offsetMs - elapsed);
+      if (d < bestDist) { bestDist = d; bestPos = p; }
+    }
+    highlightIndex = playbackSchedule[bestPos].index;
+    highlightAlpha = 1;
   }
 
   if (highlightIndex >= 0) {

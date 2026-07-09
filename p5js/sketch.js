@@ -350,11 +350,15 @@ function getBoundingBox(selector, indices) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
   for (const i of indices) {
-    const transform = getImageTransformFromElement(mediaElement.children[i], true);
-    if (!transform) continue;
-
     const image = mediaElement.children[i].querySelector(selector);
     if (!image) continue;
+
+    // Composed through the image itself (not just its parent div) - an
+    // image can carry its own scale transform (e.g. a downsized .original
+    // whose div-level alignment was computed at a different resolution),
+    // which the div's own transform alone wouldn't include.
+    const transform = getImageTransformFromElement(image, true);
+    if (!transform) continue;
 
     const w = image.naturalWidth || image.width;
     const h = image.naturalHeight || image.height;

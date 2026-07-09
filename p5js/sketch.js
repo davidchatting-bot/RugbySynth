@@ -21,7 +21,10 @@ let maskSegmentation = null;
 
 // Real-time playback of the capture sequence, driven by each image's EXIF timestamp.
 const PLAYBACK_START_PAUSE_MS = 3000;
-const PLAYBACK_END_PAUSE_MS = 3000;
+// 0: rewind starts immediately once the last photo's own hold ends (see
+// "extended forward" in getPlaybackPhaseInfo()) - no extra held-still pause
+// on the last frame beyond that normal per-image hold.
+const PLAYBACK_END_PAUSE_MS = 0;
 const PLAYBACK_SPEED = 0.3; // 1 = real-time (matches original capture pace), 0.3 = three-tenths speed
 let playbackSchedule = [];
 let playbackStartMillis = 0;

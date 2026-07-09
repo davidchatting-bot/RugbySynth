@@ -483,9 +483,13 @@ function draw() {
       // proven-compatible WEBGL image() source and a raw DOM element isn't.
       // (Named imageEl, not image, so it doesn't shadow p5's image()
       // function within this scope.)
+      // No stripShear() here (unlike computeCameraKeyframeForImage, which
+      // still uses it for shear-immune camera framing) - the real
+      // homography's shear/perspective is now rendered as-is, since the
+      // GPU's own perspective divide handles it natively.
       push();
         tint(255, 255 * currentDisplayAlpha);
-        const t = stripShear(getImageTransformFromElement(imageEl, true));
+        const t = getImageTransformFromElement(imageEl, true);
         applyMatrix(t);
         image(getTextureFromElement(imageEl), 0, 0);
       pop();

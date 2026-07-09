@@ -9,6 +9,14 @@ let mediaBoundingBox = null;
 // confident match, which is true for the large majority of burst-sequence pairs.
 const EARLY_EXIT_INLIER_THRESHOLD = 50;
 
+// Vertical FOV computeCameraKeyframeForImage()'s "contain" fit distance math
+// assumes, and what processAnyAttachedMedia() explicitly sets via
+// perspective() after resizing the canvas. Must stay in sync between the
+// two - p5's own default WEBGL FOV is derived from canvas height
+// (2*atan(height/2/800)), so it silently drifts away from a fixed 60deg
+// whenever the canvas isn't 800px tall, breaking the framing.
+const CAMERA_FOV_Y = Math.PI / 3; // 60deg. Math.PI (not p5's PI global, unavailable at parse time)
+
 let maskSegmentation = null;
 
 // Real-time playback of the capture sequence, driven by each image's EXIF timestamp.
@@ -693,7 +701,15 @@ async function processAnyAttachedMedia() {
     const w = sample.naturalWidth || sample.width;
     const h = sample.naturalHeight || sample.height;
     if (w && h) {
-      resizeCanvas(CANVAS_WIDTH, Math.round(CANVAS_WIDTH * (h / w)));
+      const canvasHeight = Math.round(CANVAS_WIDTH * (h / w));
+      resizeCanvas(CANVAS_WIDTH, canvasHeight);
+
+      // p5's default WEBGL perspective silently changes with canvas height
+      // (see CAMERA_FOV_Y above) - fix it explicitly to match what
+      // computeCameraKeyframeForImage()'s distance math assumes. near/far
+      // are generous fixed bounds; photo-pixel-space world units run into
+      // the thousands, well within [1, 1e6].
+      perspective(CAMERA_FOV_Y, CANVAS_WIDTH / canvasHeight, 1, 1e6);
     }
   }
 
@@ -976,7 +992,7 @@ function computeCameraKeyframeForImage(image, transform) {
   const rightLen = worldW || 1;
   const up = [-rightY / rightLen, rightX / rightLen, 0];
 
-  const fovY = PI / 3; // p5's default WEBGL vertical field of view (60deg)
+  const fovY = CAMERA_FOV_Y;
   const aspect = width / height;
 
   // "Contain" fit, not "cover" — the whole image must stay visible with no

@@ -25,7 +25,7 @@ const PLAYBACK_START_PAUSE_MS = 3000;
 // "extended forward" in getPlaybackPhaseInfo()) - no extra held-still pause
 // on the last frame beyond that normal per-image hold.
 const PLAYBACK_END_PAUSE_MS = 0;
-const PLAYBACK_SPEED = 0.2; // 1 = real-time (matches original capture pace), 0.2 = a fifth speed
+const PLAYBACK_SPEED = 1; // 1 = real-time (matches original capture pace)
 let playbackSchedule = [];
 let playbackStartMillis = 0;
 

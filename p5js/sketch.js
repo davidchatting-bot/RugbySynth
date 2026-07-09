@@ -1036,16 +1036,31 @@ function lerp3(a, b, t) {
 }
 
 // Returns the interpolated {eye, center, up} camera pose for the current
-// moment: exactly kfA from kfA.time through kfA's own hold/fade window (the
-// camera stays parked there for the full "burst" rather than immediately
-// setting off for kfB), then travels the remaining gap, arriving exactly at
-// kfB by kfB.time. Uses the same elapsed clock that gates each image's own
-// moment window in draw().
+// moment. Forward: exactly kfA from kfA.time through kfA's own hold/fade
+// window (the camera stays parked there for the full "burst" rather than
+// immediately setting off for kfB), then travels the remaining gap,
+// arriving exactly at kfB by kfB.time. Rewind: a direct straight line from
+// the last keyframe back to the first, over REWIND_DURATION_MS - no need to
+// retrace every intermediate keyframe on the way back. Uses the same
+// elapsed clock that gates each image's own moment window in draw().
 function getCameraPose() {
   if (cameraKeyframes.length === 0) return null;
   if (cameraKeyframes.length === 1) return cameraKeyframes[0];
 
   const elapsed = getPlaybackElapsedMs();
+
+  if (isRewinding()) {
+    const first = cameraKeyframes[0];
+    const last = cameraKeyframes[cameraKeyframes.length - 1];
+    const lastOffset = playbackSchedule[playbackSchedule.length - 1].offsetMs;
+    const t = lastOffset > 0 ? constrain(1 - elapsed / lastOffset, 0, 1) : 1;
+
+    return {
+      eye: lerp3(last.eye, first.eye, t),
+      center: lerp3(last.center, first.center, t),
+      up: lerp3(last.up, first.up, t)
+    };
+  }
 
   let i = 0;
   while (i < cameraKeyframes.length - 1 && cameraKeyframes[i + 1].time <= elapsed) i++;
